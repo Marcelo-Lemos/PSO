@@ -1,5 +1,6 @@
 ////////////////////////////// INCLUDED LIBRARIES //////////////////////////////
 
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,9 +25,10 @@ typedef struct {
 typedef struct {
     int n_particles;
     particle_t *particles;
-    double c1, c2;
+    coordinate_t best_position;
+    double best_fitness;
     double omega;
-    double phi_p, phi_g;
+    double c1, c2;
 } swarm_t;
 
 ////////////////////////////////// FUNCTIONS ///////////////////////////////////
@@ -44,10 +46,18 @@ coordinate_t random_coordinate(double x_min, double x_max, double y_min, double 
     return coordinate;
 }
 
+double goldstein_price_function(coordinate_t p) {
+    return (1+(p.x+p.y+1)*(p.x+p.y+1)*(19-14*p.x+3*p.x*p.x-14*p.y+6*p.x*p.y+3*p.y*p.y))*(30+(2*p.x-3*p.y)*(2*p.x-3*p.y)*(18-32*p.x+12*p.x*p.x+48*p.y-36*p.x*p.y+27*p.y*p.y));
+}
+
+void init_particle(particle_t *p) {
+    p->personal_best = DBL_MAX;
+}
+
 void randomize_particle(particle_t *particle){
     // TODO: change the way min and max are coded.
     particle->position = random_coordinate(-2, 2, -2, 2);
-    particle->velocity = random_coordinate(-2, 2, -2, 2);
+    particle->velocity = random_coordinate(-0.2, 0.2, -0.2, 0.2);
 }
 
 void print_particle(particle_t particle) {
@@ -61,17 +71,54 @@ void print_particle(particle_t particle) {
            particle.personal_best);
 }
 
-swarm_t * new_swarm(int n_particles, double omega, double c1, double c2, double phi_p, double phi_g) {
-    swarm_t *swarm;
+void evaluate_particle(particle_t *p) {
+    double fitness;
 
-    swarm = malloc(sizeof(swarm_t));
+    fitness = goldstein_price_function(p->position);
+    if (fitness < p->personal_best) {
+        p->personal_best = fitness;
+        p->p_best_position = p->position;
+    }
+}
+
+void update_particle_velocity(particle_t *p, double omega, double c1, double c2, coordinate_t best_position) {
+    double random_p, random_g;
+
+    // Velocity x
+    random_p = random_range(0, 1);
+    random_g = random_range(0, 1);
+    p->velocity.x = (omega*p->velocity.x) + (c1*random_p*(p->p_best_position.x - p->position.x)) + (c2*random_g*(best_position.x - p->position.x));
+
+    // Velocity y
+    random_p = random_range(0, 1);
+    random_g = random_range(0, 1);
+    p->velocity.y = (omega*p->velocity.y) + (c1*random_p*(p->p_best_position.y - p->position.y)) + (c2*random_g*(best_position.y - p->position.y));
+}
+
+void update_particle_position(particle_t *p) {
+    p->position.x += p->velocity.x;
+    p->position.y += p->velocity.y;
+}
+
+void update_particle(particle_t *p, double omega, double c1, double c2, coordinate_t best_position) {
+    update_particle_velocity(p, omega, c1, c2, best_position);
+    update_particle_position(p);
+}
+
+swarm_t * new_swarm(int n_particles, double omega, double c1, double c2) {
+    swarm_t *swarm;
+    int i;
+
+    swarm = calloc(1, sizeof(swarm_t));
     swarm->n_particles = n_particles;
     swarm->c1 = c1;
     swarm->c2 = c2;
     swarm->omega = omega;
-    swarm->phi_p = phi_p;
-    swarm->phi_g = phi_g;
     swarm->particles = calloc(n_particles, sizeof(particle_t));
+    swarm->best_fitness = DBL_MAX;
+    for (i = 0; i < n_particles; i++) {
+        init_particle(&swarm->particles[i]);
+    }
     return swarm;
 }
 
@@ -94,7 +141,8 @@ void print_swarm(swarm_t *swarm) {
     printf("Swarm size: %d\n", swarm->n_particles);
     printf("Acceleration coefficients: (%lf %lf)\n", swarm->c1, swarm->c2);
     printf("Inertia: %lf\n", swarm->omega);
-    printf("Phi values: (%lf %lf)\n", swarm->phi_p, swarm->phi_g);
+    printf("Best position: (%lf %lf)\n", swarm->best_position.x, swarm->best_position.y);
+    printf("Best fitness: %lf\n", swarm->best_fitness);
     print_swarm_particles(swarm);
 }
 
@@ -108,8 +156,38 @@ void randomize_swarm_particles(swarm_t *swarm) {
     
 }
 
-double goldstein_price_function(coordinate_t p) {
-    return (1+(p.x+p.y+1)*(p.x+p.y+1)*(19-14*p.x+3*p.x*p.x-14*p.y+6*p.x*p.y+3*p.y*p.y))*(30+(2*p.x-3*p.y)*(2*p.x-3*p.y)*(18-32*p.x+12*p.x*p.x+48*p.y-36*p.x*p.y+27*p.y*p.y));
+void evaluate_swarm_particles(swarm_t *swarm){
+    particle_t *particle;
+    int i;
+
+    for (i = 0; i < swarm->n_particles; i++) {
+        particle = &swarm->particles[i];
+        evaluate_particle(particle);
+        if (particle->personal_best < swarm->best_fitness) {
+            swarm->best_position = particle->p_best_position;
+            swarm->best_fitness = particle->personal_best;
+        }
+    }
+}
+
+void update_swarm_particles(swarm_t *swarm) {
+    particle_t *particle;
+    int i;
+
+    for (i = 0; i < swarm->n_particles; i++) {
+        particle = &swarm->particles[i];
+        update_particle(particle, swarm->omega, swarm->c1, swarm->c2, swarm->best_position);
+    }
+    
+}
+
+void pso(swarm_t *swarm, int iterations) {
+    int i;
+
+    for (i = 0; i < iterations; i++){
+        evaluate_swarm_particles(swarm);
+        update_swarm_particles(swarm);
+    }
 }
 
 ///////////////////////////////////// MAIN /////////////////////////////////////
@@ -118,12 +196,12 @@ int main(int argc, char const *argv[]) {
     int n_particles;
     double c1, c2;
     double omega;
-    double phi_personal, phi_global;
+    int iterations;
     swarm_t *swarm;
 
     srand(time(NULL));
 
-    if (argc != 7){
+    if (argc != 6){
         printf("Error: \n");
         exit(1);
     } else {
@@ -131,13 +209,15 @@ int main(int argc, char const *argv[]) {
         omega = atof(argv[2]);
         c1 = atof(argv[3]);
         c2 = atof(argv[4]);
-        phi_personal = atof(argv[5]);
-        phi_global = atof(argv[6]);
+        iterations = atoi(argv[5]);
     }
 
-    swarm = new_swarm(n_particles, omega, c1, c2, phi_personal, phi_global);
+    swarm = new_swarm(n_particles, omega, c1, c2);
     randomize_swarm_particles(swarm);
-    print_swarm(swarm);
+
+    pso(swarm, iterations);
+    printf("Best position: (%lf %lf)\nBest Fitness: %lf\n", swarm->best_position.x, swarm->best_position.y, swarm->best_fitness);
+
     free_swarm(swarm);
 
     return 0;

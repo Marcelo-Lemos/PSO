@@ -1,9 +1,6 @@
-Acceleration Coefficients:
-c1 2.0
-c2 2.0
+Omega: 0.8
 
-Inertia:
-omega 0.5
+c1: 2.0
+c2: 1.0
 
-phi_p 0.5
-phi_g 0.5
+Iterations: 1000
