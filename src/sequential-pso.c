@@ -112,14 +112,18 @@ void update_swarm_particles(swarm_t *swarm) {
     
 }
 
-void pso(swarm_t *swarm, int iterations) {
-    int i;
+void pso(swarm_t *swarm, double error) {
+    int i = 0;
 
     printf("iteration, fitness, x_pos, y_pos\n");
-    for (i = 0; i < iterations; i++){
+    while(1){
         evaluate_swarm_particles(swarm);
         printf("%d, %lf, %lf, %f\n", i, swarm->best_fitness, swarm->best_position.x, swarm->best_position.y);
+        if ((swarm->best_fitness - 3) < error){
+            break;
+        }
         update_swarm_particles(swarm);
+        i++;
     }
 }
 
@@ -129,26 +133,27 @@ int main(int argc, char const *argv[]) {
     int n_particles;
     double c1, c2;
     double omega;
-    int iterations;
+    double error;
     swarm_t *swarm;
 
     srand(time(NULL));
 
-    if (argc != 6){
-        printf("Error: \n");
+    if (argc != 2){
+        printf("Error: wrong number of arguments\n");
         exit(1);
     } else {
         n_particles = atoi(argv[1]);
-        omega = atof(argv[2]);
-        c1 = atof(argv[3]);
-        c2 = atof(argv[4]);
-        iterations = atoi(argv[5]);
+    }
+
+    if (!scanf("%lf %lf %lf %lf", &omega, &c1, &c2, &error)) {
+        printf("Error reading input!\n");
+        exit(1);
     }
 
     swarm = new_swarm(n_particles, omega, c1, c2);
     randomize_swarm_particles(swarm);
 
-    pso(swarm, iterations);
+    pso(swarm, error);
     free_swarm(swarm);
 
     return 0;
